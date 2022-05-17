@@ -1,0 +1,5 @@
+
+superlinter:
+  image: github/super-linter:latest
+  script: [ "true" ]
+  variables: { RUN_LOCAL: "true", DEFAULT_WORKSPACE: $CI_BUILDS_DIR }
