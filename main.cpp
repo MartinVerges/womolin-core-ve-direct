@@ -2,38 +2,47 @@
 #include "main.h"
 #include <iostream>
 #include <fstream>
-#include <ArduinoJson.h>
-#include <VeDirectFrameHandler.h>
+#include <string>
+#include <cstring>  
+
+#include "ArduinoJson.h"
+#include "VeDirectFrameHandler.h"
+
+using namespace std;
 
 VeDirectFrameHandler veDirectFrameHandler;
 
 int main() {
-    printf("\n\n");
-    printf("main()");
-    
-    // FILE* input_file = fopen("/dev/ttyS0", "r");
-    FILE* input_file = fopen("testdata.txt", "r");
-    if (input_file == nullptr) {
-       return EXIT_FAILURE;
-    }
+  printf("\n\n");
+  printf("main()");
+  
+  // FILE* input_file = fopen("/dev/ttyS0", "r");
+  FILE* input_file = fopen("testdata.txt", "r");
+  if (input_file == nullptr) {
+    return EXIT_FAILURE;
+  }
 
-    while (!feof(input_file)) {
-        veDirectFrameHandler.rxData(getc(input_file));
-        if (veDirectFrameHandler.veEnd > 0) {
-            printf("test");
-        }
-        
-        for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-            printf("%s", veDirectFrameHandler.veName[i]);
-            printf("= ");
-            printf("%s", veDirectFrameHandler.veValue[i]);
-            printf("\n");
-        }
-    }
-    fclose(input_file);
+  while (!feof(input_file)) {
+    veDirectFrameHandler.rxData(getc(input_file));
+    /*if (veDirectFrameHandler.veEnd > 0) {
+      for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
+        printf("%10s = %s\n", veDirectFrameHandler.veData[i].veName, veDirectFrameHandler.veData[i].veValue);
+      }
+    }*/
+  }
+  fclose(input_file);
 
-    printf("\n\n");
-    return EXIT_SUCCESS;
+  string output = "";
+  DynamicJsonDocument doc(4096);
+  for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
+    doc[veDirectFrameHandler.veData[i].veName] = veDirectFrameHandler.veData[i].veValue;
+  }
+  serializeJsonPretty(doc, output);
+
+  printf("%s", output.c_str());
+
+  printf("\n\n");
+  return EXIT_SUCCESS;
 }
 
 
