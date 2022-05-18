@@ -1,4 +1,5 @@
 
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -43,25 +44,38 @@ int main(int argc, char* argv[]) {
   cfsetospeed (&tty, B19200);
   cfsetispeed (&tty, B19200);
   
+  // Make raw
+  cfmakeraw(&tty);
+
   // Flush Port, then applies attributes
   tcflush(serialport, TCIFLUSH);
   if (tcsetattr(serialport, TCSANOW, &tty ) != 0) {
     cout << "Error " << errno << " from tcsetattr" << endl;
   }
 
-  char buf;
+  char buf = '\0';
+  int nread = 0;
   while(true) {
-    if (read(serialport, &buf, sizeof buf)) {
-      veDirectFrameHandler.rxData(buf);
-      if (veDirectFrameHandler.isDataAvailable()) {
-        for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-          printf("%10s = %s\n", veDirectFrameHandler.veData[i].veName, veDirectFrameHandler.veData[i].veValue);
+    nread = read(serialport, &buf, sizeof buf);
+    switch (nread) {
+      case -1:
+        break;
+      case 0: // nothing new
+        usleep(10);
+        break;
+      default:
+        veDirectFrameHandler.rxData(buf);
+        if (veDirectFrameHandler.isDataAvailable()) {
+          for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
+            cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
+            cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
+          }
+          veDirectFrameHandler.clearData();
         }
-        veDirectFrameHandler.clearData();
-      }
+        break;
     }
   }
 
-  printf("\n\n");
+  cout << endl << endl;
   return EXIT_SUCCESS;
 }
