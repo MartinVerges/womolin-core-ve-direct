@@ -3,7 +3,7 @@
 # Environment file for WomoLIN ve2mqtt systemd service
 #
 
-MQTT_ADDRESS="tcp://localhost:1883"
-MQTT_TOPIC="vedirect/%i"
-# MQTT_USER=username
-# MQTT_PASS=password
+TTYS0_MQTT_ADDRESS="tcp://localhost:1883"
+TTYS0_MQTT_TOPIC="vedirect/"
+# TTYS0_MQTT_USER=username
+# TTYS0_MQTT_PASS=password

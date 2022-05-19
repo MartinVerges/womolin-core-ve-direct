@@ -30,8 +30,7 @@ VeDirectFrameHandler veDirectFrameHandler;
 using namespace std;
 struct AppSettings {
   string socketPath = "";
-  string mqttHost = "";
-  string mqttPort = "1883";
+  string mqttAddress = "";
   string mqttTopic = "";
   string mqttUsername = "";
   string mqttPassword = "";
@@ -67,33 +66,44 @@ bool SetSocketBlockingEnabled(int fd, bool blocking)
    return (fcntl(fd, F_SETFL, flags) == 0) ? true : false;
 }
 
+std::string str_toupper(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), 
+                  [](unsigned char c){ return std::toupper(c); } // correct
+                );
+  return s;
+}
+
+int exit_syntax() {
+  cout << "Syntax:" << endl;
+  cout << "\t ve2mqtt <tty>" << endl;
+  cout << endl;
+  cout << "Please provide the following ENV variables in all upper case:" << endl;
+  cout << "\t <tty>_MQTT_ADDRESS   Address of the MQTT (tcp://127.0.0.1:1883)" << endl;
+  cout << "\t <tty>_MQTT_TOPIC     Topic where to store the VeDirect data" << endl;
+  cout << "\t <tty>_MQTT_USER      Username for the MQTT (optional)" << endl;
+  cout << "\t <tty>_MQTT_PASS      Password for the MQTT (optional)" << endl;
+  cout << endl;
+  return EXIT_FAILURE;
+}
+
+string env(string ident) {
+  char const* tmp = getenv(ident.c_str());
+  if ( tmp == NULL ) return string();
+  return string(tmp);
+}
+
 int main(int argc, char* argv[]) {
-  for (int i = 1; i < argc; i++) {  // i=1 because 0 is the name of the program
-    if (i+1 >= argc) {
-      cout << "Missing argument for parameter " << argv[i] << endl;
-      continue;
-    }
-    if (strcmp("--serial", argv[i]) == 0 or strcmp("-s", argv[i]) == 0) app.socketPath = string(argv[++i]);
-    if (strcmp("--mqtt-host", argv[i]) == 0 or strcmp("-h", argv[i]) == 0) {
-      app.mqttHost = argv[++i];
-      if (i+1 < argc && strncmp(argv[i+1], "-", 1) != 0) app.mqttPort = argv[++i];
-    }
-    if (strcmp("--mqtt-topic", argv[i]) == 0 or strcmp("-t", argv[i]) == 0) app.mqttTopic = argv[++i];
-    if (strcmp("--mqtt-username", argv[i]) == 0 or strcmp("-u", argv[i]) == 0) app.mqttUsername = argv[++i];
-    if (strcmp("--mqtt-password", argv[i]) == 0 or strcmp("-p", argv[i]) == 0) app.mqttPassword = argv[++i];
-  }
-  if (app.socketPath.empty() || app.mqttHost.empty() || app.mqttPort.empty() || app.mqttTopic.empty()) {
-    cout << "Syntax:" << endl;
-    cout << "\t" << argv[0] << " <options>" << endl;
-    cout << "\t\t" << "-s | --serial <serial_device>" << endl;
-    cout << "\t\t" << "-h | --mqtt-host <hostname|ip> [<port>]" << endl;
-    cout << "\t\t" << "-t | --mqtt-topic <append_string>" << endl;
-    cout << "\t\t" << "-u | --mqtt-username <username> (optional)" << endl;
-    cout << "\t\t" << "-p | --mqtt-password <password> (optional)" << endl;
-    cout << endl;
-    return EXIT_FAILURE;
-  }
-  
+  if (argc != 2) return exit_syntax();
+
+  app.socketPath = string("/dev/") + string(argv[1]);
+  auto arg1 = str_toupper(string(argv[1]));
+  app.mqttAddress = env(arg1 + "_MQTT_ADDRESS");
+  app.mqttTopic = env(arg1 + "_MQTT_TOPIC");
+  app.mqttUsername = env(arg1 + "_MQTT_USER");
+  app.mqttPassword = env(arg1 + "_MQTT_PASS");
+
+  if (app.socketPath.empty() || app.mqttAddress.empty() || app.mqttTopic.empty()) return exit_syntax();
+
   // Open the linux serial port
   int serialport = open(app.socketPath.c_str(), O_RDWR| O_NONBLOCK | O_NDELAY);
   if (serialport < 0) {
@@ -121,7 +131,7 @@ int main(int argc, char* argv[]) {
   int rc;
   MQTTClient client;
   MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-  if ((rc = MQTTClient_create(&client, app.mqttHost.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
+  if ((rc = MQTTClient_create(&client, app.mqttAddress.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
     cout << "[MQTT] Failed to create client, return code " << rc << endl;
     exit(EXIT_FAILURE);
   }
@@ -141,8 +151,8 @@ int main(int argc, char* argv[]) {
         veDirectFrameHandler.rxData(buf);
         if (veDirectFrameHandler.isDataAvailable()) {
           for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-            cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
-            cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
+            //cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
+            //cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
             // publish message to broker
             mqtt_publish(client, 
               app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
