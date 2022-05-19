@@ -118,14 +118,19 @@ int main(int argc, char* argv[]) {
   SetSocketBlockingEnabled(serialport, true);
 
   // MQTT
+  int rc;
   MQTTClient client;
-  MQTTClient_create(&client, app.mqttHost.c_str(), CLIENTID, 0, NULL);
   MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
+  if ((rc = MQTTClient_create(&client, app.mqttHost.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
+    cout << "[MQTT] Failed to create client, return code " << rc << endl;
+    exit(EXIT_FAILURE);
+  }
+  conn_opts.keepAliveInterval = 20;
+  conn_opts.cleansession = 1;
   conn_opts.username = app.mqttUsername.c_str();
   conn_opts.password = app.mqttPassword.c_str();
-  int rc;
   if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
-      cout << "Unable to connect to MQTT, return code " << rc << endl;
+      cout << "[MQTT] Unable to connect, return code " << rc << endl;
       return EXIT_FAILURE;
   }
 

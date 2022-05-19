@@ -1,0 +1,16 @@
+[Unit]
+Description=WomoLIN Ve.Direct to MQTT Agent
+StartLimitIntervalSec=15
+Wants=mosquitto.service
+
+[Service]
+EnvironmentFile=-/etc/default/womolin-ve2mqtt-env
+WorkingDirectory=/usr/local/bin/womolin/
+Type=simple
+Restart=always
+RestartSec=15
+User=root
+ExecStart=/usr/local/bin/womolin/ve2mqtt -s /dev/%i -h ${MQTT_ADDRESS} -t ${MQTT_TOPIC} -u ${MQTT_USER} -p ${MQTT_PASS}
+
+[Install]
+WantedBy=multi-user.target
