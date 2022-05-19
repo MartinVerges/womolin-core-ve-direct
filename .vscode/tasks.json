@@ -3,7 +3,7 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "rm ve2mqtt; mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && cmake --build . -j $(nproc)"
+            "command": "mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && cmake --build . -j $(nproc)"
         }
     ],
     "version": "2.0.0"
