@@ -4,11 +4,13 @@
 #include <fstream>
 #include <cstring>
 #include <stdlib.h>
+#include <algorithm>
 #include <stdio.h>      // standard input / output functions
 #include <unistd.h>     // UNIX standard function definitions
 #include <fcntl.h>      // File control definitions
 #include <errno.h>      // Error number definitions
 #include <termios.h>    // POSIX terminal control definitions
+#include <csignal>      // Signal handling
 
 /*********************
  *   MQTT-c
@@ -19,6 +21,7 @@
 #define MQTT_TIMEOUT     10000L
 #define QOS              0
 #define CLIENTID         "ve2mqtt"
+MQTTClient mqttClient;
 
 /*********************
  *   VeDirect
@@ -36,17 +39,17 @@ struct AppSettings {
   string mqttPassword = "";
 };
 AppSettings app;
+int serialport;
 
-
-void mqtt_publish(MQTTClient client, string topic, string payload) {
+void mqtt_publish(string topic, string payload) {
     MQTTClient_message message = MQTTClient_message_initializer;
     message.payload = (void *)payload.c_str();
     message.payloadlen = payload.length();
     message.qos = QOS;
     message.retained = 0;
     MQTTClient_deliveryToken token;
-    MQTTClient_publishMessage(client, topic.c_str(), &message, &token);
-    MQTTClient_waitForCompletion(client, token, MQTT_TIMEOUT);
+    MQTTClient_publishMessage(mqttClient, topic.c_str(), &message, &token);
+    MQTTClient_waitForCompletion(mqttClient, token, MQTT_TIMEOUT);
 }
 
 /**
@@ -66,26 +69,61 @@ bool SetSocketBlockingEnabled(int fd, bool blocking)
    return (fcntl(fd, F_SETFL, flags) == 0) ? true : false;
 }
 
-std::string str_toupper(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(), 
-                  [](unsigned char c){ return std::toupper(c); } // correct
-                );
-  return s;
+/**
+ * @brief Transform a string to uppercase
+ * 
+ * @param input string to convert
+ * @return string in only uppercase
+ */
+string str_toupper(string input) {
+  transform(input.begin(), input.end(), input.begin(), 
+    [](unsigned char c){ return toupper(c); }
+  );
+  return input;
 }
 
-int exit_syntax() {
+/**
+ * @brief Print out the command syntax and exit with failure
+ */
+void exit_syntax() {
   cout << "Syntax:" << endl;
   cout << "\t ve2mqtt <tty>" << endl;
   cout << endl;
-  cout << "Please provide the following ENV variables in all upper case:" << endl;
+  cout << "Please provide the following environment variables in all upper case:" << endl;
   cout << "\t <tty>_MQTT_ADDRESS   Address of the MQTT (tcp://127.0.0.1:1883)" << endl;
   cout << "\t <tty>_MQTT_TOPIC     Topic where to store the VeDirect data" << endl;
   cout << "\t <tty>_MQTT_USER      Username for the MQTT (optional)" << endl;
   cout << "\t <tty>_MQTT_PASS      Password for the MQTT (optional)" << endl;
   cout << endl;
-  return EXIT_FAILURE;
+  exit(EXIT_FAILURE);
 }
 
+/**
+ * @brief Catch an interrupt signal and exit clean
+ * 
+ * @param signum received signal, for example SIGINT
+ */
+void exit_clean(int signum) {
+  cout << "Interrupt signal (" << signum << ") received." << endl;
+
+  // Disconnect from MQTT
+  MQTTClient_disconnect(mqttClient, MQTT_TIMEOUT);
+  MQTTClient_destroy(&mqttClient);
+
+  // Close serial port
+  close(serialport);
+
+  cout << endl << endl;
+  if (signum == SIGKILL) exit(EXIT_FAILURE);
+  else exit(EXIT_SUCCESS);
+}
+
+/**
+ * @brief Get environment variable content as a string
+ * 
+ * @param ident name of the environmen variable
+ * @return string content or empty
+ */
 string env(string ident) {
   char const* tmp = getenv(ident.c_str());
   if ( tmp == NULL ) return string();
@@ -93,7 +131,9 @@ string env(string ident) {
 }
 
 int main(int argc, char* argv[]) {
-  if (argc != 2) return exit_syntax();
+  signal(SIGINT, exit_clean);
+  signal(SIGTERM, exit_clean);
+  if (argc != 2) exit_syntax();
 
   app.socketPath = string("/dev/") + string(argv[1]);
   auto arg1 = str_toupper(string(argv[1]));
@@ -102,10 +142,12 @@ int main(int argc, char* argv[]) {
   app.mqttUsername = env(arg1 + "_MQTT_USER");
   app.mqttPassword = env(arg1 + "_MQTT_PASS");
 
-  if (app.socketPath.empty() || app.mqttAddress.empty() || app.mqttTopic.empty()) return exit_syntax();
+  if (app.socketPath.empty() || app.mqttAddress.empty() || app.mqttTopic.empty()) exit_syntax();
+
+  cout << "Binding to " << app.socketPath << " and listen for Ve.Direct messages." << endl;
 
   // Open the linux serial port
-  int serialport = open(app.socketPath.c_str(), O_RDWR| O_NONBLOCK | O_NDELAY);
+  serialport = open(app.socketPath.c_str(), O_RDWR| O_NONBLOCK | O_NDELAY);
   if (serialport < 0) {
     cout << "Error " << errno << " opening " << app.socketPath << ": " << strerror(errno) << endl;
   }
@@ -129,9 +171,8 @@ int main(int argc, char* argv[]) {
 
   // MQTT
   int rc;
-  MQTTClient client;
   MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-  if ((rc = MQTTClient_create(&client, app.mqttAddress.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
+  if ((rc = MQTTClient_create(&mqttClient, app.mqttAddress.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
     cout << "[MQTT] Failed to create client, return code " << rc << endl;
     exit(EXIT_FAILURE);
   }
@@ -139,7 +180,7 @@ int main(int argc, char* argv[]) {
   conn_opts.cleansession = 1;
   conn_opts.username = app.mqttUsername.c_str();
   conn_opts.password = app.mqttPassword.c_str();
-  if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
+  if ((rc = MQTTClient_connect(mqttClient, &conn_opts)) != MQTTCLIENT_SUCCESS) {
       cout << "[MQTT] Unable to connect, return code " << rc << endl;
       return EXIT_FAILURE;
   }
@@ -154,8 +195,7 @@ int main(int argc, char* argv[]) {
             //cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
             //cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
             // publish message to broker
-            mqtt_publish(client, 
-              app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
+            mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
               veDirectFrameHandler.veData[i].veValue
             );
           }
@@ -163,11 +203,5 @@ int main(int argc, char* argv[]) {
         }
     }
   }
-
-  // Clean up
-  MQTTClient_disconnect(client, MQTT_TIMEOUT);
-  MQTTClient_destroy(&client);
-
-  cout << endl << endl;
-  return EXIT_SUCCESS;
+  exit_clean(SIGKILL);
 }

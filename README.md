@@ -13,7 +13,7 @@ cmake -DCMAKE_BUILD_TYPE=Release .. \
  && cmake --install .
 ```
 
-Please edit the file `/etc/default/womolin-ve2mqtt-env` to fullfill your needs.
+Please edit the file `/etc/default/womolin-ve2mqtt` to fullfill your needs.
 Usually you should set a topic as well as the right MQTT address.
 
 Now to enable your service, make sure that you know the correct serial port and execute the command:

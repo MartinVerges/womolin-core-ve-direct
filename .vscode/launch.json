@@ -10,14 +10,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/ve2mqtt",
             "args": [
-                "--serial", "/dev/ttyS0",
-                "--mqtt-host", "192.168.254.2", "1883",
-                "--mqtt-topic", "vedirect/test",
-                "--mqtt-username", "vedirect",
-                "--mqtt-password", "abcd1234"
+                "ttyS0",
             ],
             "cwd": "${workspaceRoot}",
-            "preLaunchTask": "build"
+            "preLaunchTask": "build-debug"
         }
     ]
 }

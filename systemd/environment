@@ -2,6 +2,8 @@
 #
 # Environment file for WomoLIN ve2mqtt systemd service
 #
+## Format is  <tty>_VARIABLE in uppercase
+#
 
 TTYS0_MQTT_ADDRESS="tcp://localhost:1883"
 TTYS0_MQTT_TOPIC="vedirect/"
