@@ -23,6 +23,19 @@ systemctl enable ve2mqtt@ttyS0
 ```
 _Note_: In my example, my Ve.Direct device is connected on /dev/ttyS0 (serial port 1)._
 
+# Running testdata instead of a ve.direct device
+
+In order to feed test data into the process.
+To do so, you have to start it up as follows:
+
+```
+export TEST_DATA=testdata/testdata-bmv712smart.txt
+export TEST_MQTT_ADDRESS=192.168.254.2
+export TEST_MQTT_TOPIC=vetestdata
+export TEST_MQTT_USER=testuser
+export TEST_MQTT_PASS=testpass
+./ve2mqtt test
+```
 
 # License
 

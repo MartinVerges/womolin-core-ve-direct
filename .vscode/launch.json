@@ -10,7 +10,14 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/ve2mqtt",
             "args": [
-                "ttyS0",
+                "test",
+            ],
+            "environment": [
+                {"name": "TEST_DATA", "value": "testdata/testdata-bmv712smart.txt"},
+                {"name": "TEST_MQTT_ADDRESS", "value": "192.168.254.2"},
+                {"name": "TEST_MQTT_TOPIC", "value": "vetestdata"},
+                {"name": "TEST_MQTT_USER", "value": "testuser"},
+                {"name": "TEST_MQTT_PASS", "value": "testpass"}
             ],
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "build-debug"

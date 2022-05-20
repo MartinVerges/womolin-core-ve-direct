@@ -133,41 +133,53 @@ string env(string ident) {
 int main(int argc, char* argv[]) {
   signal(SIGINT, exit_clean);
   signal(SIGTERM, exit_clean);
+  
   if (argc != 2) exit_syntax();
-
   app.socketPath = string("/dev/") + string(argv[1]);
   auto arg1 = str_toupper(string(argv[1]));
   app.mqttAddress = env(arg1 + "_MQTT_ADDRESS");
   app.mqttTopic = env(arg1 + "_MQTT_TOPIC");
   app.mqttUsername = env(arg1 + "_MQTT_USER");
   app.mqttPassword = env(arg1 + "_MQTT_PASS");
+  if (app.mqttAddress.empty() || app.mqttTopic.empty()) exit_syntax();
 
-  if (app.socketPath.empty() || app.mqttAddress.empty() || app.mqttTopic.empty()) exit_syntax();
+  string testdata = env(string("TEST_DATA"));
+  if (testdata.length()) {
+    // Feed testdata
+    cout << "Running with test data " << testdata << endl;
+    serialport = open(testdata.c_str(), O_RDONLY);
+    if (serialport < 0) {
+      cout << "Error " << errno << " opening " << testdata << ": " << strerror(errno) << endl;
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    // Use a socket
+    cout << "Binding to " << app.socketPath << " and listen for Ve.Direct messages." << endl;
 
-  cout << "Binding to " << app.socketPath << " and listen for Ve.Direct messages." << endl;
-
-  // Open the linux serial port
-  serialport = open(app.socketPath.c_str(), O_RDWR| O_NONBLOCK | O_NDELAY);
-  if (serialport < 0) {
-    cout << "Error " << errno << " opening " << app.socketPath << ": " << strerror(errno) << endl;
+    // Open the linux serial port
+    serialport = open(app.socketPath.c_str(), O_RDONLY);
+    if (serialport < 0) {
+      cout << "Error " << errno << " opening " << app.socketPath << ": " << strerror(errno) << endl;
+      exit(EXIT_FAILURE);
+    }
+    // Configure serial port
+    struct termios tty;
+    memset(&tty, 0, sizeof tty);
+    if (tcgetattr(serialport, &tty) != 0) {
+      cout << "Error " << errno << " from tcgetattr: " << strerror(errno) << endl;
+    }
+    // Set Baud Rate
+    cfsetospeed (&tty, B19200);
+    cfsetispeed (&tty, B19200);
+    // Make raw
+    cfmakeraw(&tty);
+    // Flush Port, then applies attributes
+    tcflush(serialport, TCIFLUSH);
+    if (tcsetattr(serialport, TCSANOW, &tty) != 0) {
+      cout << "Error " << errno << " from tcsetattr" << endl;
+    }
+    SetSocketBlockingEnabled(serialport, true);
   }
-  // Configure serial port
-  struct termios tty;
-  memset(&tty, 0, sizeof tty);
-  if (tcgetattr(serialport, &tty) != 0) {
-    cout << "Error " << errno << " from tcgetattr: " << strerror(errno) << endl;
-  }
-  // Set Baud Rate
-  cfsetospeed (&tty, B19200);
-  cfsetispeed (&tty, B19200);
-  // Make raw
-  cfmakeraw(&tty);
-  // Flush Port, then applies attributes
-  tcflush(serialport, TCIFLUSH);
-  if (tcsetattr(serialport, TCSANOW, &tty) != 0) {
-    cout << "Error " << errno << " from tcsetattr" << endl;
-  }
-  SetSocketBlockingEnabled(serialport, true);
 
   // MQTT
   int rc;
@@ -178,10 +190,11 @@ int main(int argc, char* argv[]) {
   }
   conn_opts.keepAliveInterval = 20;
   conn_opts.cleansession = 1;
-  conn_opts.username = app.mqttUsername.c_str();
-  conn_opts.password = app.mqttPassword.c_str();
+  if (app.mqttUsername.length()) conn_opts.username = app.mqttUsername.c_str();
+  if (app.mqttPassword.length()) conn_opts.password = app.mqttPassword.c_str();
   if ((rc = MQTTClient_connect(mqttClient, &conn_opts)) != MQTTCLIENT_SUCCESS) {
       cout << "[MQTT] Unable to connect, return code " << rc << endl;
+      cout << "[MQTT] Hint: Check the username and password or take a look at the mqtt broker logs" << endl;
       return EXIT_FAILURE;
   }
 
@@ -192,8 +205,11 @@ int main(int argc, char* argv[]) {
         veDirectFrameHandler.rxData(buf);
         if (veDirectFrameHandler.isDataAvailable()) {
           for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-            //cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
-            //cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
+            if (testdata.length()) {
+              cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
+              cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
+              usleep(100000);
+            }
             // publish message to broker
             mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
               veDirectFrameHandler.veData[i].veValue
