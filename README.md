@@ -23,6 +23,22 @@ systemctl enable ve2mqtt@ttyS0
 ```
 _Note_: In my example, my Ve.Direct device is connected on /dev/ttyS0 (serial port 1)._
 
+## Serial Ports of the Raspberry Pi
+
+If you want to connect multiple Victron Energy ve.direct devices to the RPi, you have to enable additional UARTs.
+Depending on the model, you have up to 5 UART Serial Ports available. 
+
+Edit `/boot/config.txt` and add the correspondig dtoverlay for the desired port. 
+```
+# dtoverlay=uart1       # GPIO 14/15
+# dtoverlay=uart2       # GPIO 0/1
+# dtoverlay=uart3       # GPIO 4/5
+# dtoverlay=uart4       # GPIO 8/9
+# dtoverlay=uart5       # GPIO 12/13
+``` 
+_Note_: You have to reboot the RPi to apply this new configuration. Beware, it is GPIO not PIN.
+
+
 # Running testdata instead of a ve.direct device
 
 In order to feed test data into the process.
