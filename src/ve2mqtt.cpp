@@ -20,7 +20,6 @@
 #pragma GCC diagnostic pop
 #define MQTT_TIMEOUT     10000L
 #define QOS              0
-#define CLIENTID         "ve2mqtt"
 MQTTClient mqttClient;
 
 /*********************
@@ -34,6 +33,7 @@ using namespace std;
 struct AppSettings {
   string socketPath = "";
   string mqttAddress = "";
+  string mqttClientId = "";
   string mqttTopic = "";
   string mqttUsername = "";
   string mqttPassword = "";
@@ -90,10 +90,11 @@ void exit_syntax() {
   cout << "\t ve2mqtt <tty>" << endl;
   cout << endl;
   cout << "Please provide the following environment variables in all upper case:" << endl;
-  cout << "\t <tty>_MQTT_ADDRESS   Address of the MQTT (tcp://127.0.0.1:1883)" << endl;
-  cout << "\t <tty>_MQTT_TOPIC     Topic where to store the VeDirect data" << endl;
-  cout << "\t <tty>_MQTT_USER      Username for the MQTT (optional)" << endl;
-  cout << "\t <tty>_MQTT_PASS      Password for the MQTT (optional)" << endl;
+  cout << "\t <tty>_MQTT_ADDRESS    Address of the MQTT (tcp://127.0.0.1:1883)" << endl;
+  cout << "\t <tty>_MQTT_TOPIC      Topic where to store the VeDirect data" << endl;
+  cout << "\t <tty>_MQTT_USER       Username for the MQTT (optional)" << endl;
+  cout << "\t <tty>_MQTT_PASS       Password for the MQTT (optional)" << endl;
+  cout << "\t <tty>_MQTT_CLIENT_ID  Unique client ID to connect to the MQTT" << endl;
   cout << endl;
   exit(EXIT_FAILURE);
 }
@@ -141,7 +142,10 @@ int main(int argc, char* argv[]) {
   app.mqttTopic = env(arg1 + "_MQTT_TOPIC");
   app.mqttUsername = env(arg1 + "_MQTT_USER");
   app.mqttPassword = env(arg1 + "_MQTT_PASS");
-  if (app.mqttAddress.empty() || app.mqttTopic.empty()) exit_syntax();
+  app.mqttClientId = env(arg1 + "_MQTT_CLIENT_ID");
+  if (app.mqttClientId.empty()) app.mqttClientId = app.mqttUsername;
+  
+  if (app.mqttAddress.empty() || app.mqttTopic.empty() || app.mqttClientId.empty()) exit_syntax();
 
   string testdata = env(string("TEST_DATA"));
   if (testdata.length()) {
@@ -149,7 +153,7 @@ int main(int argc, char* argv[]) {
     cout << "Running with test data " << testdata << endl;
     serialport = open(testdata.c_str(), O_RDONLY);
     if (serialport < 0) {
-      cout << "Error " << errno << " opening " << testdata << ": " << strerror(errno) << endl;
+      cerr << "[ERROR] Code " << errno << " opening " << testdata << ": " << strerror(errno) << endl;
       exit(EXIT_FAILURE);
     }
   } else {
@@ -159,14 +163,14 @@ int main(int argc, char* argv[]) {
     // Open the linux serial port
     serialport = open(app.socketPath.c_str(), O_RDONLY);
     if (serialport < 0) {
-      cout << "Error " << errno << " opening " << app.socketPath << ": " << strerror(errno) << endl;
+      cerr << "[ERROR] Code " << errno << " opening " << app.socketPath << ": " << strerror(errno) << endl;
       exit(EXIT_FAILURE);
     }
     // Configure serial port
     struct termios tty;
     memset(&tty, 0, sizeof tty);
     if (tcgetattr(serialport, &tty) != 0) {
-      cout << "Error " << errno << " from tcgetattr: " << strerror(errno) << endl;
+      cerr << "[ERROR] Code " << errno << " from tcgetattr: " << strerror(errno) << endl;
     }
     // Set Baud Rate
     cfsetospeed (&tty, B19200);
@@ -176,7 +180,7 @@ int main(int argc, char* argv[]) {
     // Flush Port, then applies attributes
     tcflush(serialport, TCIFLUSH);
     if (tcsetattr(serialport, TCSANOW, &tty) != 0) {
-      cout << "Error " << errno << " from tcsetattr" << endl;
+      cerr << "[ERROR] Code " << errno << " from tcsetattr" << endl;
     }
     SetSocketBlockingEnabled(serialport, true);
   }
@@ -184,18 +188,22 @@ int main(int argc, char* argv[]) {
   // MQTT
   int rc;
   MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-  if ((rc = MQTTClient_create(&mqttClient, app.mqttAddress.c_str(), CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
-    cout << "[MQTT] Failed to create client, return code " << rc << endl;
+  if ((rc = MQTTClient_create(&mqttClient, app.mqttAddress.c_str(), app.mqttClientId.c_str(), MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS) {
+    cerr << "[MQTT] Failed to create client, return code " << rc << endl;
     exit(EXIT_FAILURE);
+  } else  {
+    cout << "[MQTT] Created a client with ID " << app.mqttClientId << " for Broker address " << app.mqttAddress << endl;
   }
   conn_opts.keepAliveInterval = 20;
   conn_opts.cleansession = 1;
   if (app.mqttUsername.length()) conn_opts.username = app.mqttUsername.c_str();
   if (app.mqttPassword.length()) conn_opts.password = app.mqttPassword.c_str();
   if ((rc = MQTTClient_connect(mqttClient, &conn_opts)) != MQTTCLIENT_SUCCESS) {
-      cout << "[MQTT] Unable to connect, return code " << rc << endl;
-      cout << "[MQTT] Hint: Check the username and password or take a look at the mqtt broker logs" << endl;
+      cerr << "[MQTT] Unable to connect, return code " << rc << endl;
+      cerr << "[MQTT] Hint: Check the username and password or take a look at the mqtt broker logs" << endl;
       return EXIT_FAILURE;
+  } else {
+    cout << "[MQTT] Broker connection established!" << endl;
   }
 
   // Do the actual work
@@ -205,13 +213,17 @@ int main(int argc, char* argv[]) {
         veDirectFrameHandler.rxData(buf);
         if (veDirectFrameHandler.isDataAvailable()) {
           for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-            if (testdata.length()) {
+            // cout << "[DATA] received " << veDirectFrameHandler.veData[i].veName << " with Value " << veDirectFrameHandler.veData[i].veValue << endl;
+            if (!testdata.empty()) {
               cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
               cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
               usleep(100000);
             }
             // publish message to broker
-            mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
+            if (strcmp(veDirectFrameHandler.veData[i].veName, "SER#") == 0) {
+              // FIXME: Deal better than skipping on special chars
+              cout << "[MQTT] Skipping illegal topic name ser#" << endl;
+            } else mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
               veDirectFrameHandler.veData[i].veValue
             );
           }
