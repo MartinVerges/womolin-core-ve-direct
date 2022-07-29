@@ -34,3 +34,10 @@ if(NOT EXISTS "/etc/default/womolin-ve2mqtt")
 endif()
 
 install(CODE "EXECUTE_PROCESS(COMMAND systemctl daemon-reload)")
+
+SET(CPACK_GENERATOR "DEB")
+SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Martin Verges <martin@verges.cc>")
+SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.30)")
+
+INCLUDE(CPack)
+
