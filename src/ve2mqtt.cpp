@@ -11,6 +11,7 @@
 #include <errno.h>      // Error number definitions
 #include <termios.h>    // POSIX terminal control definitions
 #include <csignal>      // Signal handling
+#include <cmath>        // round
 
 /*********************
  *   MQTT-c
@@ -223,9 +224,15 @@ int main(int argc, char* argv[]) {
             if (strcmp(veDirectFrameHandler.veData[i].veName, "SER#") == 0) {
               // FIXME: Deal better than skipping on special chars
               cout << "[MQTT] Skipping illegal topic name ser#" << endl;
-            } else mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
-              veDirectFrameHandler.veData[i].veValue
-            );
+            } else {
+              if (strcmp(veDirectFrameHandler.veData[i].veName, "SOC") == 0) {
+                float level = (float)atoi(veDirectFrameHandler.veData[i].veValue) / 10.f;
+                mqtt_publish(app.mqttTopic + string("/level"), to_string((int)round(level)).c_str());
+              }
+              mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
+                veDirectFrameHandler.veData[i].veValue
+              );
+            }
           }
           veDirectFrameHandler.clearData();
         }
