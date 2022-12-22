@@ -47,7 +47,7 @@ void mqtt_publish(string topic, string payload) {
     message.payload = (void *)payload.c_str();
     message.payloadlen = payload.length();
     message.qos = QOS;
-    message.retained = 0;
+    message.retained = 1;
     MQTTClient_deliveryToken token;
     MQTTClient_publishMessage(mqttClient, topic.c_str(), &message, &token);
     MQTTClient_waitForCompletion(mqttClient, token, MQTT_TIMEOUT);
