@@ -53,6 +53,107 @@ export TEST_MQTT_PASS=testpass
 ./ve2mqtt test
 ```
 
+# Using it with Home Assistant
+
+To use the data of the VE Direct devices in the best possible way from the MQTT in HomeAssistant, here is an example configuration.
+Please put it into your `configuration.yaml` file.
+
+```
+mqtt:
+  sensor:
+# ve2mqtt - BMS702 values
+    - name: " Battery Level"
+      unique_id: "batterylevel"
+      state_topic: "vedirect/bms/level"
+      unit_of_measurement: "%"
+      icon: "mdi:car-battery"
+
+    - name: " Battery Temperature"
+      unique_id: "batterytemp"
+      state_topic: "vedirect/bms/T"
+      unit_of_measurement: "°C"
+      icon: "mdi:temperature-celsius"
+
+    - name: " Battery current"
+      unique_id: "batterycurrent"
+      state_topic: "vedirect/bms/I"
+      unit_of_measurement: "mA"
+      icon: "mdi:current-dc"
+
+    - name: " Battery watts"
+      unique_id: "batterywatts"
+      state_topic: "vedirect/bms/P"
+      unit_of_measurement: "W"
+      icon: "mdi:lightning-bolt"
+
+    - name: " Battery voltage"
+      unique_id: "batteryvoltage"
+      state_topic: "vedirect/bms/V"
+      unit_of_measurement: "mV"
+      icon: "mdi:flash-triangle"
+
+# ve2mqtt - MPPT values
+    - name: "MPPT solar charge"
+      unique_id: "mpptcharge"
+      state_topic: "vedirect/mppt/I"
+      unit_of_measurement: "mA"
+      icon: "mdi:current-dc"
+
+    - name: "MPPT solar panel volts"
+      unique_id: "mpptpvvolts"
+      state_topic: "vedirect/mppt/VPV"
+      unit_of_measurement: "mV"
+      icon: "mdi:flash-triangle"
+
+    - name: "MPPT solar panel power"
+      unique_id: "mpptpvpower"
+      state_topic: "vedirect/mppt/PPV"
+      unit_of_measurement: "W"
+      icon: "mdi:lightning-bolt"
+
+```
+
+Your dashboard could look like that:
+
+```
+    - type: vertical-stack
+      cards:
+        - type: gauge
+        severity:
+            green: 60
+            yellow: 20
+            red: 0
+        needle: false
+        name: Battery
+        entity: sensor.battery_level
+        - hours_to_show: 24
+        graph: line
+        type: sensor
+        detail: 2
+        entity: sensor.battery_level
+        name: SoC
+        - show_name: false
+        show_icon: true
+        show_state: true
+        type: glance
+        entities:
+            - entity: sensor.battery_temperature
+            - entity: sensor.battery_voltage
+            - entity: sensor.battery_watts
+            - entity: sensor.battery_current
+        title: Battery
+        - show_name: false
+        show_icon: true
+        show_state: true
+        type: glance
+        entities:
+            - entity: sensor.mppt_solar_charge
+            - entity: sensor.mppt_solar_panel_power
+            - entity: sensor.mppt_solar_panel_volts
+        title: Photovoltaik
+        state_color: false
+```
+
 # License
 
 ve2mqtt (c) by Martin Verges.
