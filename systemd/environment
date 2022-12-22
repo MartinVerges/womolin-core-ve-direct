@@ -9,3 +9,5 @@ TTYS0_MQTT_ADDRESS="tcp://localhost:1883"
 TTYS0_MQTT_TOPIC="vedirect/"
 # TTYS0_MQTT_USER=username
 # TTYS0_MQTT_PASS=password
+# TTYSO_MQTT_CLIENT_ID=myclientid
+# TTYS0_UPDATE_N_FRAMES=10

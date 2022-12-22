@@ -14,7 +14,7 @@
 #include <cmath>        // round
 
 /*********************
- *   MQTT-c
+ *   Paho MQTT
  *********************/
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include <MQTTClient.h>
@@ -29,6 +29,8 @@ MQTTClient mqttClient;
 #include "VeDirectFrameHandler.h"
 VeDirectFrameHandler veDirectFrameHandler;
 
+// Defaults
+#define SKIPFRAMES 10
 
 using namespace std;
 struct AppSettings {
@@ -38,6 +40,7 @@ struct AppSettings {
   string mqttTopic = "";
   string mqttUsername = "";
   string mqttPassword = "";
+  uint8_t skipNFrames = 0;
 };
 AppSettings app;
 int serialport;
@@ -96,6 +99,9 @@ void exit_syntax() {
   cout << "\t <tty>_MQTT_USER       Username for the MQTT (optional)" << endl;
   cout << "\t <tty>_MQTT_PASS       Password for the MQTT (optional)" << endl;
   cout << "\t <tty>_MQTT_CLIENT_ID  Unique client ID to connect to the MQTT" << endl;
+  cout << "\t <tty>_UPDATE_N_FRAMES Update the MQTT after N frames, this reduces stress on the MQTT." << endl;
+  cout << "\t                       VE devices do print the status every second. A value of 10 is near" << endl;
+  cout << "\t                       equal to 10 seconds interval." << endl;
   cout << endl;
   exit(EXIT_FAILURE);
 }
@@ -124,12 +130,26 @@ void exit_clean(int signum) {
  * @brief Get environment variable content as a string
  * 
  * @param ident name of the environmen variable
- * @return string content or empty
+ * @param defaultVal value to return if environment variable can't be found
+ * @return string content or defaultVal
  */
-string env(string ident) {
+string envString(string ident, string defaultVal = "") {
   char const* tmp = getenv(ident.c_str());
-  if ( tmp == NULL ) return string();
+  if ( tmp == NULL ) return defaultVal;
   return string(tmp);
+}
+
+/**
+ * @brief Get environment variable content as a int
+ * 
+ * @param ident name of the environmen variable
+ * @param defaultVal value to return if environment variable can't be found
+ * @return int content or defaultVal
+ */
+int envInt(string ident, int defaultVal = 0) {
+  char const* tmp = getenv(ident.c_str());
+  if ( tmp == NULL ) return defaultVal;
+  return stoi(tmp);
 }
 
 int main(int argc, char* argv[]) {
@@ -139,16 +159,17 @@ int main(int argc, char* argv[]) {
   if (argc != 2) exit_syntax();
   app.socketPath = string("/dev/") + string(argv[1]);
   auto arg1 = str_toupper(string(argv[1]));
-  app.mqttAddress = env(arg1 + "_MQTT_ADDRESS");
-  app.mqttTopic = env(arg1 + "_MQTT_TOPIC");
-  app.mqttUsername = env(arg1 + "_MQTT_USER");
-  app.mqttPassword = env(arg1 + "_MQTT_PASS");
-  app.mqttClientId = env(arg1 + "_MQTT_CLIENT_ID");
+  app.mqttAddress = envString(arg1 + "_MQTT_ADDRESS");
+  app.mqttTopic = envString(arg1 + "_MQTT_TOPIC");
+  app.mqttUsername = envString(arg1 + "_MQTT_USER");
+  app.mqttPassword = envString(arg1 + "_MQTT_PASS");
+  app.mqttClientId = envString(arg1 + "_MQTT_CLIENT_ID");
+  app.skipNFrames = envInt(arg1 + "_UPDATE_N_FRAMES", SKIPFRAMES);
   if (app.mqttClientId.empty()) app.mqttClientId = app.mqttUsername;
   
   if (app.mqttAddress.empty() || app.mqttTopic.empty() || app.mqttClientId.empty()) exit_syntax();
 
-  string testdata = env(string("TEST_DATA"));
+  string testdata = envString(string("TEST_DATA"));
   if (testdata.length()) {
     // Feed testdata
     cout << "Running with test data " << testdata << endl;
@@ -209,29 +230,37 @@ int main(int argc, char* argv[]) {
 
   // Do the actual work
   char buf = '\0';
-  while(true) {
+  int frameCount = 0; // used to skip N frames
+  while(true) { // main loop()
     if (read(serialport, &buf, sizeof buf) ) {
         veDirectFrameHandler.rxData(buf);
         if (veDirectFrameHandler.isDataAvailable()) {
-          for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
-            // cout << "[DATA] received " << veDirectFrameHandler.veData[i].veName << " with Value " << veDirectFrameHandler.veData[i].veValue << endl;
-            if (!testdata.empty()) {
-              cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
-              cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
-              usleep(100000);
-            }
-            // publish message to broker
-            if (strcmp(veDirectFrameHandler.veData[i].veName, "SER#") == 0) {
-              // FIXME: Deal better than skipping on special chars
-              cout << "[MQTT] Skipping illegal topic name ser#" << endl;
-            } else {
-              if (strcmp(veDirectFrameHandler.veData[i].veName, "SOC") == 0) {
-                float level = (float)atoi(veDirectFrameHandler.veData[i].veValue) / 10.f;
-                mqtt_publish(app.mqttTopic + string("/level"), to_string((int)round(level)).c_str());
+          if (frameCount < app.skipNFrames) {
+            // Skip this frame, reduce MQTT and CPU stress
+            frameCount++;
+          } else {
+            frameCount = 0;
+            // Render this frame
+            for (int i = 0; i < veDirectFrameHandler.veEnd; i++ ) {
+              // cout << "[DATA] received " << veDirectFrameHandler.veData[i].veName << " with Value " << veDirectFrameHandler.veData[i].veValue << endl;
+              if (!testdata.empty()) {
+                cout << std::setfill(' ') << std::setw(5) << veDirectFrameHandler.veData[i].veName;
+                cout << " = " << veDirectFrameHandler.veData[i].veValue << endl;
+                usleep(100000);
               }
-              mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
-                veDirectFrameHandler.veData[i].veValue
-              );
+              // publish message to broker
+              if (strcmp(veDirectFrameHandler.veData[i].veName, "SER#") == 0) {
+                // FIXME: Deal better than skipping on special chars
+                cout << "[MQTT] Skipping illegal topic name ser#" << endl;
+              } else {
+                if (strcmp(veDirectFrameHandler.veData[i].veName, "SOC") == 0) {
+                  float level = (float)atoi(veDirectFrameHandler.veData[i].veValue) / 10.f;
+                  mqtt_publish(app.mqttTopic + string("/level"), to_string((int)round(level)).c_str());
+                }
+                mqtt_publish(app.mqttTopic + string("/") + veDirectFrameHandler.veData[i].veName,
+                  veDirectFrameHandler.veData[i].veValue
+                );
+              }
             }
           }
           veDirectFrameHandler.clearData();
